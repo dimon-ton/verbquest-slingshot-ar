@@ -3,7 +3,7 @@ import type { Settings, InputMode } from './types';
 
 export class StorageManager {
   private key='verbquest-settings-v1'; private scoreKey='verbquest-teams-v1';
-  defaults:Settings={inputMode:'pointer',muted:false,music:true,volume:.55,reducedMotion:false,quality:'high',readingTime:1,targetSpeed:1};
+  defaults:Settings={inputMode:'pointer',cameraFacing:'user',muted:false,music:true,volume:.55,reducedMotion:false,quality:'high',readingTime:1,targetSpeed:1};
   getSettings():Settings { try{return {...this.defaults,...JSON.parse(localStorage.getItem(this.key)||'{}')};}catch{return {...this.defaults};} }
   saveSettings(s:Settings){try{localStorage.setItem(this.key,JSON.stringify(s));}catch{/* storage remains optional */}}
   teams():{name:string;score:number;date:string}[]{try{const x=JSON.parse(localStorage.getItem(this.scoreKey)||'[]');return Array.isArray(x)?x:[];}catch{return [];}}
@@ -16,14 +16,14 @@ export class AudioManager {
 }
 export class CameraController {
   stream?:MediaStream;
-  async start(video:HTMLVideoElement){ if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera API is not available in this browser.');this.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=this.stream;await video.play(); }
+  async start(video:HTMLVideoElement,facing:'user'|'environment'='user'){ if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera API is not available in this browser.');this.stop();this.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=this.stream;video.style.transform=facing==='user'?'scaleX(-1)':'none';await video.play(); }
   stop(){this.stream?.getTracks().forEach(t=>t.stop());this.stream=undefined;}
 }
 export type HandPoint={x:number;y:number;pinch:boolean;seen:number};
 export class HandTrackingController {
   private landmarker?:HandLandmarker; private running=false; private last=0; point?:HandPoint;
-  async start(video:HTMLVideoElement, onPoint:(p:HandPoint|undefined)=>void){
-    try { const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm');this.landmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1});this.running=true;const tick=()=>{if(!this.running)return;const now=performance.now();if(video.readyState>=2&&now-this.last>30){this.last=now;const r=this.landmarker!.detectForVideo(video,now);const l=r.landmarks[0];if(l){const i=l[8],t=l[4];const p={x:(1-i.x)*innerWidth,y:i.y*innerHeight,pinch:Math.hypot(i.x-t.x,i.y-t.y)<.075,seen:now};this.point=p;onPoint(p);}else onPoint(undefined);}requestAnimationFrame(tick);};tick();
+  async start(video:HTMLVideoElement, onPoint:(p:HandPoint|undefined)=>void, mirror=true){
+    try { const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm');this.landmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1});this.running=true;const tick=()=>{if(!this.running)return;const now=performance.now();if(video.readyState>=2&&now-this.last>30){this.last=now;const r=this.landmarker!.detectForVideo(video,now);const l=r.landmarks[0];if(l){const i=l[8],t=l[4];const p={x:(mirror?1-i.x:i.x)*innerWidth,y:i.y*innerHeight,pinch:Math.hypot(i.x-t.x,i.y-t.y)<.075,seen:now};this.point=p;onPoint(p);}else onPoint(undefined);}requestAnimationFrame(tick);};tick();
     } catch (e) { this.stop(); throw e; }
   }
   stop(){this.running=false;this.landmarker?.close();this.landmarker=undefined;}

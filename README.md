@@ -20,7 +20,7 @@ npm run dev
 
 Other commands: `npm run typecheck`, `npm run test`, `npm run build`, and `npm run preview`.
 
-Camera access requires **HTTPS or localhost**. Press “เปิดกล้องและเริ่ม” before any permission request. If permission is denied, select “เล่นโดยไม่ใช้กล้อง”; all gameplay works with fallback controls.
+Camera access requires **HTTPS or localhost**. Press “เปิดกล้องและเริ่ม” before any permission request, then choose **กล้องหน้า (Front camera)**—the default and recommended option for hand tracking—or **กล้องหลัง (Rear camera)**. If permission is denied, select “เล่นโดยไม่ใช้กล้อง”; all gameplay works with fallback controls.
 
 ## Controls
 
