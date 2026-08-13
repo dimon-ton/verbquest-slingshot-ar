@@ -25,7 +25,7 @@ Camera access requires **HTTPS or localhost**. Press “เปิดกล้อ
 ## Controls
 
 - Hand: pinch index finger and thumb near the orb, pull, then open fingers.
-- Touch/mouse: drag the orb backwards and release.
+- Touch/mouse: drag the orb backwards and release, or reach the bottom edge to fire immediately.
 - Keyboard: arrows pull the orb; Space/Enter launch; R releases/resets.
 
 ## Content and tuning

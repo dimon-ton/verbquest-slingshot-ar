@@ -1,5 +1,6 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { Settings, InputMode } from './types';
+import { reachesBottomEdge } from './logic';
 
 export class StorageManager {
   private key='verbquest-settings-v1'; private scoreKey='verbquest-teams-v1';
@@ -29,11 +30,14 @@ export class HandTrackingController {
   stop(){this.running=false;this.landmarker?.close();this.landmarker=undefined;}
 }
 export class InputController {
-  mode:InputMode='pointer'; private keys=new Set<string>(); private move?:{x:number;y:number}; private down=false; private keyboardPoint?:{x:number;y:number};
+  mode:InputMode='pointer'; private keys=new Set<string>(); private move?:{x:number;y:number}; private down=false; private pointerId?:number; private keyboardPoint?:{x:number;y:number};
   constructor(private element:HTMLElement, private on:(p:{x:number;y:number;down:boolean;release?:boolean;reset?:boolean})=>void){
-    element.addEventListener('pointerdown',e=>{this.down=true;this.send(e.clientX,e.clientY);});element.addEventListener('pointermove',e=>this.down&&this.send(e.clientX,e.clientY));element.addEventListener('pointerup',e=>{this.down=false;this.on({x:e.clientX,y:e.clientY,down:false,release:true});});
+    element.addEventListener('pointerdown',e=>{if(this.mode!=='pointer')return;this.down=true;this.pointerId=e.pointerId;this.element.setPointerCapture?.(e.pointerId);this.send(e.clientX,e.clientY);});
+    element.addEventListener('pointermove',e=>{if(!this.down||e.pointerId!==this.pointerId)return;this.send(e.clientX,e.clientY);if(reachesBottomEdge(e.clientY,this.element.getBoundingClientRect().bottom))this.release(e.clientX,e.clientY);});
+    element.addEventListener('pointerup',e=>{if(!this.down||e.pointerId!==this.pointerId)return;this.release(e.clientX,e.clientY);});
     addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' ','Enter','r','R'].includes(e.key)){e.preventDefault();this.keys.add(e.key);}});addEventListener('keyup',e=>this.keys.delete(e.key));
   }
   private send(x:number,y:number){this.move={x,y};this.on({x,y,down:this.down});}
+  private release(x:number,y:number){const pointerId=this.pointerId;this.down=false;this.pointerId=undefined;if(pointerId!==undefined&&this.element.hasPointerCapture?.(pointerId))this.element.releasePointerCapture?.(pointerId);this.on({x,y,down:false,release:true});}
   keyboard(rest:{x:number;y:number}){if(this.mode!=='keyboard')return;const p=this.keyboardPoint||{...rest};if(this.keys.has('ArrowLeft'))p.x-=5;if(this.keys.has('ArrowRight'))p.x+=5;if(this.keys.has('ArrowUp'))p.y-=5;if(this.keys.has('ArrowDown'))p.y+=5;this.keyboardPoint=p;const launch=this.keys.has(' ')||this.keys.has('Enter');if(launch){this.keys.delete(' ');this.keys.delete('Enter');this.on({x:p.x,y:p.y,down:false,release:true});this.keyboardPoint=undefined;}else this.on({x:p.x,y:p.y,down:true});if(this.keys.has('r')||this.keys.has('R')){this.keys.delete('r');this.keys.delete('R');this.keyboardPoint=undefined;this.on({x:rest.x,y:rest.y,down:false,reset:true});}}
 }
