@@ -1,0 +1,21 @@
+Kenney UI Audio and Digital Audio
+Copyright: Kenney Vleugels (Kenney.nl)
+License: Creative Commons Zero (CC0 1.0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The assets may be used in personal and commercial projects. Credit is not
+required, but is included in this project as thanks to the creator.
+
+Sources:
+https://kenney.nl/assets/ui-audio
+https://kenney.nl/assets/digital-audio
+
+Bundled mappings (original OGG -> transcoded MP3):
+click3 -> ui-click
+switch6 -> grab
+laser4 -> launch
+powerUp3 -> correct
+lowDown -> wrong
+highUp -> coin
+phaserDown2 -> miss
+threeTone2 -> victory

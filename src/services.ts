@@ -2,6 +2,19 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { Settings, InputMode } from './types';
 import { reachesBottomEdge } from './logic';
 
+export type SoundCue='click'|'grab'|'launch'|'correct'|'wrong'|'coin'|'miss'|'victory';
+const SOUND_URLS:Record<SoundCue,string>={
+  click:new URL('./assets/audio/ui-click.mp3',import.meta.url).href,
+  grab:new URL('./assets/audio/grab.mp3',import.meta.url).href,
+  launch:new URL('./assets/audio/launch.mp3',import.meta.url).href,
+  correct:new URL('./assets/audio/correct.mp3',import.meta.url).href,
+  wrong:new URL('./assets/audio/wrong.mp3',import.meta.url).href,
+  coin:new URL('./assets/audio/coin.mp3',import.meta.url).href,
+  miss:new URL('./assets/audio/miss.mp3',import.meta.url).href,
+  victory:new URL('./assets/audio/victory.mp3',import.meta.url).href,
+};
+const SOUND_LEVEL:Record<SoundCue,number>={click:.5,grab:.45,launch:.72,correct:.78,wrong:.62,coin:.65,miss:.58,victory:.82};
+
 export class StorageManager {
   private key='verbquest-settings-v1'; private scoreKey='verbquest-teams-v1';
   defaults:Settings={inputMode:'pointer',cameraFacing:'user',muted:false,music:true,volume:.55,reducedMotion:false,quality:'high',readingTime:1,targetSpeed:1};
@@ -11,9 +24,12 @@ export class StorageManager {
   addTeam(name:string,score:number){try{const rows=[...this.teams(),{name:name.trim().slice(0,24)||'Team Wizard',score,date:new Date().toLocaleDateString()}].sort((a,b)=>b.score-a.score).slice(0,10);localStorage.setItem(this.scoreKey,JSON.stringify(rows));}catch{/* optional */}}
 }
 export class AudioManager {
-  private ctx?:AudioContext; muted=false; volume=.55;
-  unlock(){if(!this.ctx)this.ctx=new AudioContext(); if(this.ctx.state==='suspended')void this.ctx.resume();}
-  tone(kind:'pull'|'launch'|'correct'|'wrong'|'coin'|'victory', pitch=440){if(this.muted)return;this.unlock();const c=this.ctx!;const o=c.createOscillator(),g=c.createGain();const now=c.currentTime;const map={pull:'sine',launch:'triangle',correct:'sine',wrong:'sawtooth',coin:'square',victory:'triangle'} as const;o.type=map[kind];o.frequency.setValueAtTime(pitch,now);o.frequency.exponentialRampToValueAtTime(kind==='wrong'?110:pitch*1.5,now+.16);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.08*this.volume,now+.015);g.gain.exponentialRampToValueAtTime(.0001,now+.24);o.connect(g).connect(c.destination);o.start();o.stop(now+.25);}
+  private ctx?:AudioContext; private buffers=new Map<SoundCue,AudioBuffer>(); private loading?:Promise<void>; private pending=new Set<SoundCue>(); muted=false; volume=.55;
+  private context(){return this.ctx||(this.ctx=new AudioContext());}
+  preload(){if(this.loading)return this.loading;const c=this.context();this.loading=Promise.all((Object.entries(SOUND_URLS) as [SoundCue,string][]).map(async([cue,url])=>{const response=await fetch(url);if(!response.ok)throw Error(`Sound ${cue} failed to load`);this.buffers.set(cue,await c.decodeAudioData(await response.arrayBuffer()));})).then(()=>undefined).catch(()=>undefined);return this.loading;}
+  unlock(){const c=this.context();if(c.state==='suspended')void c.resume();void this.preload();}
+  play(cue:SoundCue){if(this.muted)return;this.unlock();if(this.buffers.has(cue)){this.playBuffer(cue);return;}if(this.pending.has(cue))return;this.pending.add(cue);void this.preload().then(()=>{this.pending.delete(cue);if(!this.muted&&this.buffers.has(cue))this.playBuffer(cue);});}
+  private playBuffer(cue:SoundCue){const c=this.context(),source=c.createBufferSource(),gain=c.createGain();source.buffer=this.buffers.get(cue)!;gain.gain.value=Math.max(0,Math.min(1,this.volume))*SOUND_LEVEL[cue];source.connect(gain).connect(c.destination);source.start();}
 }
 export class CameraController {
   stream?:MediaStream;

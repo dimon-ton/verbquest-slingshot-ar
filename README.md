@@ -5,6 +5,7 @@ An educational WebAR-style slingshot game for Thai primary-school learners revie
 ## Features
 
 - Magical procedural art, wizard mascot, elastic slingshot, ballistic Matter projectile, floating answer crystals, impact effects, Web Audio and supported haptics.
+- Event-specific sound effects for UI actions, orb grabbing, launch, hits, misses, rewards, and victory.
 - 60 verified grammar questions in `src/questions.ts`, organised by pronouns, singular nouns, plurals, and mixed review.
 - Practice (10 questions, unlimited retries), Challenge (15 questions, hearts/combo/shield), and local Team mode with a LocalStorage leaderboard.
 - Hand tracking through MediaPipe Tasks Vision, plus complete touch/mouse and keyboard fallback. Camera is optional.
@@ -39,3 +40,7 @@ Slingshot pull cap and launch conversion are in `src/logic.ts` (`pullLimit`, `la
 Build with `npm run build` and deploy the `dist/` folder to GitHub Pages. The Vite base is relative so it works under a repository path. Current Chrome/Edge, Android Chrome, iOS Safari, and desktop webcams are supported; MediaPipe can fall back to touch/mouse if its model or WebGL cannot load.
 
 No accounts, ads, analytics, backend, or camera uploads are used. If LocalStorage is blocked/corrupt, the game silently continues without saved settings or scores. For camera trouble, use HTTPS/localhost, check browser permissions, or select the fallback control option.
+
+## Audio credits
+
+Sound effects are selected from Kenney's [UI Audio](https://kenney.nl/assets/ui-audio) and [Digital Audio](https://kenney.nl/assets/digital-audio) packs, released under Creative Commons Zero (CC0). The bundled MP3 files are transcoded from the original OGG files for broad browser support.
