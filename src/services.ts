@@ -1,4 +1,3 @@
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { Settings, InputMode } from './types';
 import { reachesBottomEdge } from './logic';
 
@@ -37,13 +36,53 @@ export class CameraController {
   stop(){this.stream?.getTracks().forEach(t=>t.stop());this.stream=undefined;}
 }
 export type HandPoint={x:number;y:number;pinch:boolean;seen:number;joints:{x:number;y:number}[]};
+type NormalizedJoint={x:number;y:number};
+type HandWorkerMessage=
+  | {type:'ready'}
+  | {type:'result';landmarks:NormalizedJoint[][]}
+  | {type:'error';message:string};
 export class HandTrackingController {
-  private landmarker?:HandLandmarker; private running=false; private last=0; point?:HandPoint;
-  async start(video:HTMLVideoElement, onPoint:(p:HandPoint|undefined)=>void, mirror=true){
-    try { const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm');this.landmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1});this.running=true;const tick=()=>{if(!this.running)return;const now=performance.now();if(video.readyState>=2&&now-this.last>30){this.last=now;const r=this.landmarker!.detectForVideo(video,now);const l=r.landmarks[0];if(l){const i=l[8],t=l[4];const joints=l.map(j=>({x:(mirror?1-j.x:j.x)*innerWidth,y:j.y*innerHeight}));const p={x:(mirror?1-i.x:i.x)*innerWidth,y:i.y*innerHeight,pinch:Math.hypot(i.x-t.x,i.y-t.y)<.075,seen:now,joints};this.point=p;onPoint(p);}else onPoint(undefined);}requestAnimationFrame(tick);};tick();
-    } catch (e) { this.stop(); throw e; }
+  private worker?:Worker; private running=false; private busy=false; private frameRequest=0; private lastVideoTime=-1; private lastInference=0; point?:HandPoint;
+  async start(video:HTMLVideoElement,onPoint:(p:HandPoint|undefined)=>void,mirror=true,onError?:(message:string)=>void){
+    this.stop();
+    if(typeof Worker==='undefined'||typeof createImageBitmap==='undefined')throw Error('This browser cannot run hand tracking in the background.');
+    const worker=new Worker(new URL('./handTracking.worker.ts',import.meta.url),{type:'module'});this.worker=worker;
+    try {
+      await new Promise<void>((resolve,reject)=>{
+        let ready=false;
+        const timeout=window.setTimeout(()=>reject(Error('Hand tracking took too long to load.')),20000);
+        const fail=(message:string)=>{if(!ready){clearTimeout(timeout);reject(Error(message));return;}this.stop();onError?.(message);};
+        worker.onerror=event=>{event.preventDefault();fail(event.message||'Hand tracking stopped unexpectedly.');};
+        worker.onmessage=(event:MessageEvent<HandWorkerMessage>)=>{
+          const message=event.data;
+          if(message.type==='ready'){ready=true;clearTimeout(timeout);resolve();return;}
+          if(message.type==='error'){fail(message.message);return;}
+          this.busy=false;
+          const landmarks=message.landmarks[0];
+          if(!landmarks||landmarks.length<21){this.point=undefined;onPoint(undefined);return;}
+          const index=landmarks[8],thumb=landmarks[4];
+          const joints=landmarks.map(j=>({x:(mirror?1-j.x:j.x)*innerWidth,y:j.y*innerHeight}));
+          const point={x:(mirror?1-index.x:index.x)*innerWidth,y:index.y*innerHeight,pinch:Math.hypot(index.x-thumb.x,index.y-thumb.y)<.075,seen:performance.now(),joints};
+          this.point=point;onPoint(point);
+        };
+        worker.postMessage({type:'init'});
+      });
+      this.running=true;
+      const tick=()=>{
+        if(!this.running)return;
+        this.frameRequest=requestAnimationFrame(tick);
+        const now=performance.now();
+        if(this.busy||video.readyState<2||video.currentTime===this.lastVideoTime||now-this.lastInference<66)return;
+        this.busy=true;this.lastVideoTime=video.currentTime;this.lastInference=now;
+        void createImageBitmap(video).then(frame=>{
+          if(!this.running||this.worker!==worker){frame.close();this.busy=false;return;}
+          worker.postMessage({type:'frame',frame,timestamp:now},[frame]);
+        }).catch(error=>{this.busy=false;this.stop();onError?.(error instanceof Error?error.message:'Could not read a camera frame.');});
+      };
+      tick();
+    } catch(e){this.stop();throw e;}
   }
-  stop(){this.running=false;this.landmarker?.close();this.landmarker=undefined;}
+  stop(){this.running=false;this.busy=false;this.lastVideoTime=-1;this.lastInference=0;if(this.frameRequest)cancelAnimationFrame(this.frameRequest);this.frameRequest=0;this.worker?.terminate();this.worker=undefined;this.point=undefined;}
 }
 export class InputController {
   mode:InputMode='pointer'; private keys=new Set<string>(); private move?:{x:number;y:number}; private down=false; private pointerId?:number; private keyboardPoint?:{x:number;y:number};
