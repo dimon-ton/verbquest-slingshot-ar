@@ -1,6 +1,6 @@
 import {FilesetResolver,HandLandmarker} from '@mediapipe/tasks-vision';
 
-const WASM_ROOT='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm';
+const WASM_ROOT='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm';
 const MODEL_URL='https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 let landmarker:HandLandmarker|undefined;
 
@@ -10,7 +10,10 @@ self.onmessage=async(event:MessageEvent<{type:'init'}|{type:'frame';frame:ImageB
   const message=event.data;
   if(message.type==='init'){
     try{
-      const vision=await FilesetResolver.forVisionTasks(WASM_ROOT);
+      // This code runs in an ES-module worker, so load MediaPipe's module-aware
+      // WASM bootstrap. The classic bootstrap does not expose ModuleFactory
+      // when it is imported as an ES module.
+      const vision=await FilesetResolver.forVisionTasks(WASM_ROOT,true);
       const options={baseOptions:{modelAssetPath:MODEL_URL,delegate:'GPU' as const},runningMode:'VIDEO' as const,numHands:1,minHandDetectionConfidence:.4,minHandPresenceConfidence:.4,minTrackingConfidence:.4};
       try{landmarker=await HandLandmarker.createFromOptions(vision,options);}
       catch{landmarker=await HandLandmarker.createFromOptions(vision,{...options,baseOptions:{modelAssetPath:MODEL_URL,delegate:'CPU'}});}
