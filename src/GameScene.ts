@@ -3,7 +3,7 @@ import type { Answer, Question, Settings } from './types';
 import { ANSWERS, MIN_PULL_DISTANCE, isValidLaunch, launchVelocity, pullLimit, shuffleTargets } from './logic';
 
 export interface SceneEvents { hit:(answer:Answer)=>void; miss:()=>void; aim:(power:number)=>void; launch:()=>void; }
-type Target={answer:Answer; body:Phaser.Physics.Matter.Sprite; label:Phaser.GameObjects.Text; halo:Phaser.GameObjects.Arc; baseY:number;};
+type Target={answer:Answer; body:Phaser.Physics.Matter.Sprite; label:Phaser.GameObjects.Text; halo:Phaser.GameObjects.Arc; baseY:number; falling?:boolean;};
 export class VerbQuestScene extends Phaser.Scene {
   eventsOut!:SceneEvents; settings!:Settings; private rest={x:0,y:0}; private maxPull=180; private pouch!:Phaser.GameObjects.Arc; private grabRing!:Phaser.GameObjects.Arc; private bands!:Phaser.GameObjects.Graphics; private orbit!:Phaser.GameObjects.Graphics; private projectile?:Phaser.Physics.Matter.Sprite; private targets:Target[]=[]; private aiming=false; private pull={x:0,y:0,d:0}; private flight=false; private particles?:Phaser.GameObjects.Particles.ParticleEmitter; private cursor?:Phaser.GameObjects.Arc; private activeQuestion?:Question;
   constructor(){super('verbquest');}
@@ -27,8 +27,8 @@ export class VerbQuestScene extends Phaser.Scene {
   get restPoint(){return {...this.rest};}
   reload(){if(!this.flight)this.resetProjectile();}
   question(q:Question){this.clearTargets();this.activeQuestion=q;this.resetProjectile();const w=this.scale.width,h=this.scale.height;const slots=shuffleTargets([{x:w*.22,y:h*.38},{x:w*.5,y:h*.3},{x:w*.78,y:h*.39}]);ANSWERS.forEach((answer,i)=>this.addTarget(answer,slots[i].x,slots[i].y));}
-  private addTarget(answer:Answer,x:number,y:number){const color:Record<Answer,number>={am:0xff6ca8,is:0x57e5ff,are:0xaef05b};const halo=this.add.circle(x,y,54,color[answer],.23).setDepth(4);const body=this.matter.add.sprite(x,y,'bubble',undefined,{isStatic:true,isSensor:true,shape:{type:'circle',radius:47}}).setDisplaySize(105,105).setTint(color[answer]).setDepth(6);const label=this.add.text(x,y,answer,{fontFamily:'Arial Rounded MT Bold,Arial',fontSize:'30px',color:'#fff',stroke:'#1c1248',strokeThickness:6}).setOrigin(.5).setDepth(7);this.targets.push({answer,body,label,halo,baseY:y});}
-  private clearTargets(){this.targets.forEach(t=>{t.body.destroy();t.label.destroy();t.halo.destroy();});this.targets=[];}
+  private addTarget(answer:Answer,x:number,y:number){const color:Record<Answer,number>={am:0xff6ca8,is:0x57e5ff,are:0xaef05b};const halo=this.add.circle(x,y,54,color[answer],.23).setDepth(4);const body=this.matter.add.sprite(x,y,'bubble',undefined,{isStatic:true,isSensor:true,shape:{type:'circle',radius:47}}).setDisplaySize(105,105).setTint(color[answer]).setDepth(6);const label=this.add.text(x,y,answer,{fontFamily:'Arial Rounded MT Bold,Arial',fontSize:'30px',color:'#fff',stroke:'#1c1248',strokeThickness:6}).setOrigin(.5).setDepth(7);this.targets.push({answer,body,label,halo,baseY:y,falling:false});}
+  private clearTargets(){this.targets.forEach(t=>{this.tweens.killTweensOf([t.body,t.label,t.halo]);t.body.destroy();t.label.destroy();t.halo.destroy();});this.targets=[];}
   private resetPouch(){if(!this.pouch)return;this.pouch.setPosition(this.rest.x,this.rest.y);this.drawBands(this.rest.x,this.rest.y);}
   private resetProjectile(){if(this.projectile)this.projectile.destroy();this.flight=false;this.aiming=false;this.pull={x:0,y:0,d:0};this.resetPouch();if(this.orbit)this.orbit.clear();this.projectile=this.matter.add.sprite(this.rest.x,this.rest.y,'orb',undefined,{frictionAir:.012,restitution:.55,density:.002}).setCircle(19).setDisplaySize(44,44).setTint(0xffe55d).setDepth(15);this.projectile.setStatic(true);}
   pointer(x:number,y:number,down:boolean,release=false,hand=false){
@@ -80,10 +80,78 @@ export class VerbQuestScene extends Phaser.Scene {
   private launchPull(){const scale=180/this.maxPull;return {x:this.pull.x*scale,y:this.pull.y*scale,d:this.pull.d*scale};}
   private drawTrajectory(){this.orbit.clear();const v=launchVelocity(this.launchPull()),start=this.projectile!;this.orbit.fillStyle(0xa9fff8,.85);for(let t=.08;t<1.15;t+=.08){const x=start.x+v.x*60*t;const y=start.y+v.y*60*t+.5*1.35*60*t*t;if(y>this.scale.height-15)break;this.orbit.fillCircle(x,y,3);}}
   private launch(){const p=this.projectile;if(!p)return;this.aiming=false;this.flight=true;this.orbit.clear();this.pouch.setPosition(this.rest.x,this.rest.y);this.drawBands(this.rest.x,this.rest.y);p.setStatic(false);const v=launchVelocity(this.launchPull());p.setVelocity(v.x,v.y);this.eventsOut.aim(0);this.eventsOut.launch();}
-  private collide(e:Phaser.Physics.Matter.Events.CollisionStartEvent){if(!this.flight||!this.projectile)return;for(const pair of e.pairs){const a=pair.bodyA.gameObject,b=pair.bodyB.gameObject;const target=this.targets.find(t=>t.body===a||t.body===b);if(target&&(a===this.projectile||b===this.projectile)){this.flight=false;this.projectile.setStatic(true);this.projectile.setVisible(false);this.eventsOut.hit(target.answer);this.burst(target.body.x,target.body.y,target.answer===this.activeQuestion?.answer);return;}}
+  private collide(e:Phaser.Physics.Matter.Events.CollisionStartEvent){
+    if(!this.flight||!this.projectile)return;
+    for(const pair of e.pairs){
+      const a=pair.bodyA.gameObject,b=pair.bodyB.gameObject;
+      const target=this.targets.find(t=>t.body===a||t.body===b);
+      if(target&&(a===this.projectile||b===this.projectile)){
+        this.flight=false;
+        const bv=this.projectile.body?this.projectile.body.velocity:{x:0,y:-8};
+        this.projectile.setStatic(true);
+        this.projectile.setVisible(false);
+        target.falling=true;
+        target.body.setStatic(false);
+        target.body.setSensor(true);
+        const kickX=Phaser.Math.Clamp(bv.x*.35,-6,6)+Phaser.Math.FloatBetween(-2,2);
+        const kickY=Math.min(-4,bv.y*.25-2.5);
+        target.body.setVelocity(kickX,kickY);
+        target.body.setAngularVelocity(Phaser.Math.FloatBetween(-.14,.14));
+        this.tweens.add({targets:target.halo,alpha:0,duration:220});
+        this.eventsOut.hit(target.answer);
+        this.burst(target.body.x,target.body.y,target.answer===this.activeQuestion?.answer);
+        return;
+      }
+    }
   }
-  feedback(answer:Answer,correct:boolean){const t=this.targets.find(x=>x.answer===answer);if(!t)return;if(correct){this.tweens.add({targets:[t.body,t.label],scaleX:1.3,scaleY:.7,duration:90,yoyo:true,onComplete:()=>{t.body.setVisible(false);t.label.setVisible(false);t.halo.setVisible(false);}});}else{this.tweens.add({targets:[t.body,t.label],x:'+=10',duration:65,yoyo:true,repeat:3});const right=this.targets.find(x=>x.answer===this.activeQuestion?.answer);right?.halo.setFillStyle(0xaef05b,.7);}}
+  feedback(answer:Answer,correct:boolean){
+    const t=this.targets.find(x=>x.answer===answer);
+    if(!t)return;
+    if(correct){
+      this.tweens.add({targets:[t.body,t.label],scaleX:1.25,scaleY:.8,duration:90,yoyo:true});
+      this.targets.filter(x=>x.answer!==answer).forEach(other=>{
+        this.tweens.add({targets:[other.body,other.label,other.halo],alpha:.25,duration:350});
+      });
+    }else{
+      this.tweens.add({targets:[t.body,t.label],x:'+=10',duration:65,yoyo:true,repeat:3});
+      const right=this.targets.find(x=>x.answer===this.activeQuestion?.answer);
+      if(right){
+        right.halo.setFillStyle(0xaef05b,.75);
+        this.tweens.add({targets:[right.halo,right.body],scale:1.15,duration:220,yoyo:true,repeat:2});
+      }
+    }
+  }
   private burst(x:number,y:number,correct:boolean){this.particles?.setParticleTint(correct?[0xb7ff5e,0xffdf5b,0x6effe8]:[0xff785b,0xffd35d]).explode(correct?26:10,x,y);this.cameras.main.shake(correct?130:70,correct?.012:.005);}
-  update(){if(this.flight&&this.projectile){const p=this.projectile;if(p.x<-80||p.x>this.scale.width+80||p.y>this.scale.height+120){this.flight=false;this.eventsOut.miss();}}this.targets.forEach((t,i)=>{if(this.settings?.targetSpeed&&this.activeQuestion&&this.settings.targetSpeed>0&&!this.settings.reducedMotion){const drift=this.settings.targetSpeed*(this.settings.inputMode==='keyboard'?0:1)*(this.settings.targetSpeed>1?1:0.22);const y=t.baseY+Math.sin(this.time.now/700+i)*8*drift;t.body.setY(y);t.label.setY(y);t.halo.setY(y);}});if(this.flight&&this.projectile?.body){const v=this.projectile.body.velocity;this.projectile.setRotation(Math.atan2(v.y,v.x));}}
+  update(){
+    if(this.flight&&this.projectile){
+      const p=this.projectile;
+      if(p.x<-80||p.x>this.scale.width+80||p.y>this.scale.height+120){
+        this.flight=false;
+        this.eventsOut.miss();
+      }
+    }
+    this.targets.forEach((t,i)=>{
+      if(t.falling){
+        t.label.setPosition(t.body.x,t.body.y);
+        t.label.setRotation(t.body.rotation);
+        t.halo.setPosition(t.body.x,t.body.y);
+        if(t.body.y>this.scale.height+120){
+          t.body.setVisible(false);
+          t.label.setVisible(false);
+          t.halo.setVisible(false);
+        }
+      }else if(this.settings?.targetSpeed&&this.activeQuestion&&this.settings.targetSpeed>0&&!this.settings.reducedMotion){
+        const drift=this.settings.targetSpeed*(this.settings.inputMode==='keyboard'?0:1)*(this.settings.targetSpeed>1?1:0.22);
+        const y=t.baseY+Math.sin(this.time.now/700+i)*8*drift;
+        t.body.setY(y);
+        t.label.setY(y);
+        t.halo.setY(y);
+      }
+    });
+    if(this.flight&&this.projectile?.body){
+      const v=this.projectile.body.velocity;
+      this.projectile.setRotation(Math.atan2(v.y,v.x));
+    }
+  }
 }
 
