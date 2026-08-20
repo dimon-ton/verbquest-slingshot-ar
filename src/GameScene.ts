@@ -3,7 +3,7 @@ import type { Answer, Question, Settings } from './types';
 import { ANSWERS, MIN_PULL_DISTANCE, isValidLaunch, launchVelocity, pullLimit, shuffleTargets } from './logic';
 
 export interface SceneEvents { hit:(answer:Answer)=>void; miss:()=>void; aim:(power:number)=>void; launch:()=>void; }
-type Target={answer:Answer; body:Phaser.Physics.Matter.Sprite; label:Phaser.GameObjects.Text; halo:Phaser.GameObjects.Arc; baseY:number; falling?:boolean;};
+type Target={answer:Answer; body:Phaser.Physics.Matter.Sprite; label:Phaser.GameObjects.Text; halo:Phaser.GameObjects.Arc; baseY:number; falling?:boolean; vx?:number; vy?:number; rotSpeed?:number;};
 export class VerbQuestScene extends Phaser.Scene {
   eventsOut!:SceneEvents; settings!:Settings; private rest={x:0,y:0}; private maxPull=180; private pouch!:Phaser.GameObjects.Arc; private grabRing!:Phaser.GameObjects.Arc; private bands!:Phaser.GameObjects.Graphics; private orbit!:Phaser.GameObjects.Graphics; private projectile?:Phaser.Physics.Matter.Sprite; private targets:Target[]=[]; private aiming=false; private pull={x:0,y:0,d:0}; private flight=false; private particles?:Phaser.GameObjects.Particles.ParticleEmitter; private cursor?:Phaser.GameObjects.Arc; private activeQuestion?:Question;
   constructor(){super('verbquest');}
@@ -91,13 +91,11 @@ export class VerbQuestScene extends Phaser.Scene {
         this.projectile.setStatic(true);
         this.projectile.setVisible(false);
         target.falling=true;
-        target.body.setStatic(false);
-        target.body.setSensor(true);
-        const kickX=Phaser.Math.Clamp(bv.x*.35,-6,6)+Phaser.Math.FloatBetween(-2,2);
-        const kickY=Math.min(-4,bv.y*.25-2.5);
-        target.body.setVelocity(kickX,kickY);
-        target.body.setAngularVelocity(Phaser.Math.FloatBetween(-.14,.14));
-        this.tweens.add({targets:target.halo,alpha:0,duration:220});
+        target.vx=Phaser.Math.Clamp(bv.x*.25,-4,4)+Phaser.Math.FloatBetween(-1,1);
+        target.vy=Math.max(2.5,Math.abs(bv.y*.15)+2);
+        target.rotSpeed=Phaser.Math.FloatBetween(-.05,.05);
+        this.tweens.add({targets:target.halo,alpha:0,duration:200});
+        this.tweens.add({targets:[target.body,target.label],scaleX:1.15,scaleY:.85,duration:70,yoyo:true});
         this.eventsOut.hit(target.answer);
         this.burst(target.body.x,target.body.y,target.answer===this.activeQuestion?.answer);
         return;
@@ -108,9 +106,8 @@ export class VerbQuestScene extends Phaser.Scene {
     const t=this.targets.find(x=>x.answer===answer);
     if(!t)return;
     if(correct){
-      this.tweens.add({targets:[t.body,t.label],scaleX:1.25,scaleY:.8,duration:90,yoyo:true});
       this.targets.filter(x=>x.answer!==answer).forEach(other=>{
-        this.tweens.add({targets:[other.body,other.label,other.halo],alpha:.25,duration:350});
+        this.tweens.add({targets:[other.body,other.label,other.halo],alpha:.2,duration:350});
       });
     }else{
       this.tweens.add({targets:[t.body,t.label],x:'+=10',duration:65,yoyo:true,repeat:3});
@@ -132,10 +129,16 @@ export class VerbQuestScene extends Phaser.Scene {
     }
     this.targets.forEach((t,i)=>{
       if(t.falling){
-        t.label.setPosition(t.body.x,t.body.y);
-        t.label.setRotation(t.body.rotation);
-        t.halo.setPosition(t.body.x,t.body.y);
-        if(t.body.y>this.scale.height+120){
+        t.vy=(t.vy??2.5)+.75;
+        const nextX=t.body.x+(t.vx??0);
+        const nextY=t.body.y+t.vy;
+        const nextRot=t.body.rotation+(t.rotSpeed??.03);
+        t.body.setPosition(nextX,nextY);
+        t.body.setRotation(nextRot);
+        t.label.setPosition(nextX,nextY);
+        t.label.setRotation(nextRot);
+        t.halo.setPosition(nextX,nextY);
+        if(nextY>this.scale.height+140){
           t.body.setVisible(false);
           t.label.setVisible(false);
           t.halo.setVisible(false);
