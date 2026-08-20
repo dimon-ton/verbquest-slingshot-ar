@@ -1,5 +1,5 @@
 import type { Settings, InputMode } from './types';
-import { reachesBottomEdge } from './logic';
+import { PINCH_RELEASE_RATIO, PINCH_START_RATIO, reachesBottomEdge } from './logic';
 
 export type SoundCue='click'|'grab'|'launch'|'correct'|'wrong'|'coin'|'miss'|'victory';
 const SOUND_URLS:Record<SoundCue,string>={
@@ -42,7 +42,7 @@ type HandWorkerMessage=
   | {type:'result';landmarks:NormalizedJoint[][]}
   | {type:'error';message:string};
 export class HandTrackingController {
-  private worker?:Worker; private running=false; private busy=false; private frameRequest=0; private lastVideoTime=-1; private lastInference=0; point?:HandPoint;
+  private worker?:Worker; private running=false; private busy=false; private frameRequest=0; private lastVideoTime=-1; private lastInference=0; private isPinching=false; private pinchFrames=0; private smoothX?:number; private smoothY?:number; point?:HandPoint;
   async start(video:HTMLVideoElement,onPoint:(p:HandPoint|undefined)=>void,mirror=true,onError?:(message:string)=>void){
     this.stop();
     if(typeof Worker==='undefined'||typeof createImageBitmap==='undefined')throw Error('This browser cannot run hand tracking in the background.');
@@ -59,10 +59,23 @@ export class HandTrackingController {
           if(message.type==='error'){fail(message.message);return;}
           this.busy=false;
           const landmarks=message.landmarks[0];
-          if(!landmarks||landmarks.length<21){this.point=undefined;onPoint(undefined);return;}
+          if(!landmarks||landmarks.length<21){
+            this.smoothX=undefined;this.smoothY=undefined;this.isPinching=false;this.pinchFrames=0;
+            this.point=undefined;onPoint(undefined);return;
+          }
           const index=landmarks[8],thumb=landmarks[4];
+          const rawX=(mirror?1-index.x:index.x)*innerWidth;
+          const rawY=index.y*innerHeight;
+          if(this.smoothX===undefined||this.smoothY===undefined){this.smoothX=rawX;this.smoothY=rawY;}
+          else{this.smoothX=.7*rawX+.3*this.smoothX;this.smoothY=.7*rawY+.3*this.smoothY;}
+          const dist=Math.hypot(index.x-thumb.x,index.y-thumb.y);
+          const threshold=this.isPinching?PINCH_RELEASE_RATIO:PINCH_START_RATIO;
+          const rawPinch=dist<threshold;
+          if(rawPinch)this.pinchFrames++;else this.pinchFrames=0;
+          if(this.isPinching)this.isPinching=rawPinch;
+          else this.isPinching=this.pinchFrames>=2;
           const joints=landmarks.map(j=>({x:(mirror?1-j.x:j.x)*innerWidth,y:j.y*innerHeight}));
-          const point={x:(mirror?1-index.x:index.x)*innerWidth,y:index.y*innerHeight,pinch:Math.hypot(index.x-thumb.x,index.y-thumb.y)<.075,seen:performance.now(),joints};
+          const point={x:this.smoothX,y:this.smoothY,pinch:this.isPinching,seen:performance.now(),joints};
           this.point=point;onPoint(point);
         };
         worker.postMessage({type:'init'});
@@ -82,7 +95,7 @@ export class HandTrackingController {
       tick();
     } catch(e){this.stop();throw e;}
   }
-  stop(){this.running=false;this.busy=false;this.lastVideoTime=-1;this.lastInference=0;if(this.frameRequest)cancelAnimationFrame(this.frameRequest);this.frameRequest=0;this.worker?.terminate();this.worker=undefined;this.point=undefined;}
+  stop(){this.running=false;this.busy=false;this.lastVideoTime=-1;this.lastInference=0;this.smoothX=undefined;this.smoothY=undefined;this.isPinching=false;this.pinchFrames=0;if(this.frameRequest)cancelAnimationFrame(this.frameRequest);this.frameRequest=0;this.worker?.terminate();this.worker=undefined;this.point=undefined;}
 }
 export class InputController {
   mode:InputMode='pointer'; private keys=new Set<string>(); private move?:{x:number;y:number}; private down=false; private pointerId?:number; private keyboardPoint?:{x:number;y:number};
