@@ -3,6 +3,14 @@ Copyright: Kenney Vleugels (Kenney.nl)
 License: Creative Commons Zero (CC0 1.0)
 https://creativecommons.org/publicdomain/zero/1.0/
 
+Background Music (bgm.mp3):
+Track: Chiptune by Paul-Vincent Roll
+License: Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0) / CC0
+Source: https://commons.wikimedia.org/wiki/File:Paul-Vincent_Roll_-_Chiptune.ogg
+
+Synthesized Impact and Combo Audio (hit.mp3, combo.mp3):
+License: Creative Commons Zero (CC0 1.0 Universal) Public Domain Dedication
+
 The assets may be used in personal and commercial projects. Credit is not
 required, but is included in this project as thanks to the creator.
 
@@ -19,3 +27,7 @@ lowDown -> wrong
 highUp -> coin
 phaserDown2 -> miss
 threeTone2 -> victory
+hit -> hit
+combo -> combo
+bgm -> bgm
+

@@ -102,14 +102,23 @@ export class VerbQuestScene extends Phaser.Scene {
       }
     }
   }
-  feedback(answer:Answer,correct:boolean){
+  feedback(answer:Answer,correct:boolean,points=100,combo=1){
     const t=this.targets.find(x=>x.answer===answer);
     if(!t)return;
+    const x=t.body.x,y=t.body.y;
     if(correct){
+      const txt=this.add.text(x,y-15,`+${points}`,{fontFamily:'Arial Rounded MT Bold,system-ui',fontSize:'34px',color:'#ffea47',stroke:'#0d382c',strokeThickness:6}).setOrigin(.5).setDepth(28);
+      this.tweens.add({targets:txt,y:y-85,alpha:0,scale:1.25,duration:850,ease:'Cubic.easeOut',onComplete:()=>txt.destroy()});
+      if(combo>=2){
+        const comboTxt=this.add.text(x,y-55,`✦ x${combo} COMBO!`,{fontFamily:'Arial Rounded MT Bold,system-ui',fontSize:'22px',color:'#6effe8',stroke:'#1c1248',strokeThickness:5}).setOrigin(.5).setDepth(28);
+        this.tweens.add({targets:comboTxt,y:y-115,alpha:0,scale:1.15,duration:950,ease:'Cubic.easeOut',onComplete:()=>comboTxt.destroy()});
+      }
       this.targets.filter(x=>x.answer!==answer).forEach(other=>{
         this.tweens.add({targets:[other.body,other.label,other.halo],alpha:.2,duration:350});
       });
     }else{
+      const txt=this.add.text(x,y-15,'✕ TRY AGAIN',{fontFamily:'Arial Rounded MT Bold,system-ui',fontSize:'24px',color:'#ff7272',stroke:'#3a0c10',strokeThickness:5}).setOrigin(.5).setDepth(28);
+      this.tweens.add({targets:txt,y:y-65,alpha:0,duration:800,ease:'Cubic.easeOut',onComplete:()=>txt.destroy()});
       this.tweens.add({targets:[t.body,t.label],x:'+=10',duration:65,yoyo:true,repeat:3});
       const right=this.targets.find(x=>x.answer===this.activeQuestion?.answer);
       if(right){
@@ -118,7 +127,7 @@ export class VerbQuestScene extends Phaser.Scene {
       }
     }
   }
-  private burst(x:number,y:number,correct:boolean){this.particles?.setParticleTint(correct?[0xb7ff5e,0xffdf5b,0x6effe8]:[0xff785b,0xffd35d]).explode(correct?26:10,x,y);this.cameras.main.shake(correct?130:70,correct?.012:.005);}
+  private burst(x:number,y:number,correct:boolean){this.particles?.setParticleTint(correct?[0xb7ff5e,0xffdf5b,0x6effe8,0xffffff]:[0xff785b,0xffd35d,0x888888]).explode(correct?32:16,x,y);this.cameras.main.shake(correct?130:70,correct?.012:.005);}
   update(){
     if(this.flight&&this.projectile){
       const p=this.projectile;
